@@ -1,4 +1,9 @@
+import Viz from './viz';
+import Stats from 'stats.js';
 const canvasSketch = require('canvas-sketch');
+
+// https://threejs.org/examples/?q=line#software_lines_splines
+// https://threejs.org/examples/?q=line#webgl_lines_fat
 
 // Ensure ThreeJS is in global scope for the 'examples/'
 global.THREE = require('three');
@@ -18,54 +23,11 @@ const sketch = ({ context }) => {
     context
   });
 
-  // WebGL background color
-  renderer.setClearColor('hsl(0, 0%, 85%)', 1);
+  const stats = new Stats();
+  stats.showPanel(0);
+  document.body.appendChild(stats.dom);
 
-  // Setup a camera
-  const camera = new THREE.OrthographicCamera();
-
-  // Setup your scene
-  const scene = new THREE.Scene();
-
-  // create 1x1x1 cube geometry
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-
-  let mesh = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      color: 'red'
-    })
-  );
-
-  // red x
-  // green y
-  // blue z
-
-  // set random position
-  mesh.position.set(
-    0,
-    0,
-    10
-  );
-  // scale x, y, and z coordinates by a scalar (in this case, shrinking)
-  mesh.scale.multiplyScalar(0.1);
-  scene.add(mesh);    
-
-  // add direction light white that makes some cool shadows
-  const light = new THREE.DirectionalLight('white', 1);
-  light.position.set(
-    -2,
-    4,
-    2
-  );
-  scene.add(light); 
-  
-  // add ambient light - soft gray
-  scene.add(new THREE.AmbientLight('hsl(0,0,90%)'));  
-
-  const axes = new THREE.AxesHelper(1);
-  axes.position.set(0,0,0);
-  scene.add(axes);
+  const viz = new Viz({ renderer });
 
   // draw each frame
   return {
@@ -78,6 +40,8 @@ const sketch = ({ context }) => {
       // this is nice because it matches the viewport, and sets zoom to 1
       // for x, -1 is the left edge of the viewport, 1 is the right
       // for y, -1 is the bottom edge of the viewport, 1 is the top
+      const { renderer, camera } = viz;
+      
       renderer.setPixelRatio(pixelRatio);
       renderer.setSize(viewportWidth, viewportHeight);
       const aspect = viewportWidth / viewportHeight;
@@ -109,7 +73,9 @@ const sketch = ({ context }) => {
     },
     // Update & render your scene here
     render ({ time }) {
-      renderer.render(scene, camera);
+      stats.begin();
+      viz.draw({ time });
+      stats.end();
     },
     // Dispose of events & renderer for cleaner hot-reloading
     unload () {
