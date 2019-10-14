@@ -56,8 +56,8 @@ const sketch = ({ context }) => {
       camera.bottom = -zoom;
 
       // Near/Far
-      camera.near = -100;
-      camera.far = 100;
+      camera.near = -500;
+      camera.far = 500;
 
       // Set position & look at world center
       // put it at zero      
