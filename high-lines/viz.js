@@ -17,7 +17,10 @@ global.THREE = require('three');
 random.setSeed(random.getRandomSeed());
 console.log('seed', random.getSeed());
 
-const palette = random.pick(palettes);
+const palette = random.pick(palettes)
+  .concat(random.pick(random.shuffle(palettes)))
+  .concat(random.pick(random.shuffle(palettes)))
+  .concat(random.pick(random.shuffle(palettes)));
 
 export default class Viz {
   constructor(params){
@@ -61,14 +64,13 @@ export default class Viz {
 
     while(this.lines.length < LINES_COUNT){
       // create starting point, (0,0) is top left, (1,1) is bottom right
-      // random.permuteNoise();
-      let pos0 = random.value(TUBE_RADIUS, 1-TUBE_RADIUS);
-      let pos1 = random.value(TUBE_RADIUS, 1-TUBE_RADIUS);
+      random.permuteNoise();
+      let pos0 = random.range(0.3, 0.7);
+      let pos1 = random.range(0.2, 0.8);
       let forward = random.boolean();
       let vertical = random.boolean();
       let edges = [0,1];
       let offset = random.pick([0,1]);
-
 
       if(!forward){
         edges.reverse();
@@ -86,22 +88,27 @@ export default class Viz {
       let x1 = vertical
         ? pos0
         : edges[1];
-        let y1 = vertical
+      let y1 = vertical
         ? edges[1]
         : pos0;
+
+      console.log('x0', x0);
+      console.log('y0', y0);
+      console.log('x1', x1);
+      console.log('y1', y1);
 
       let vx = x1 - x0;
       let vy = y1 - y0;
 
       let baseAngle = Math.atan2(vy, vx);
 
-      let z0 = random.range(0, DEPTH);
-      let z1 = DEPTH - z0;
+      // all lines start out at the center of the depth field, in 
+      let baseZ = this.camera.far/2;
 
       let v = new THREE.Vector3(vx,vy,0);
 
-      let p0 = [x0,y0,z0];
-      let p1 = [x1,y1,z1];
+      let p0 = new THREE.Vector3(x0,y0,baseZ);
+      let p1 = new THREE.Vector3(x1,y1,baseZ);
 
       let points = [p0];
       let mainLinePoints = [p0];
@@ -109,27 +116,23 @@ export default class Viz {
       while (points.length < CURVE_SEGMENTS){
         // get next point
         let i = points.length;
-        let p = points[i-1];
-        let angleMultiplier = (i + offset) % 2
-          ? 1
-          : -1;
+        let p = points[i-1].clone();
 
         let noise = vertical
           ? [
-            random.noise2D(p[0], p[1], 2),
+            random.noise2D(p.x, p.y, 2),
             0,
             0
           ]
           : [
             0,
-            random.noise2D(p[0], p[1], 2),
+            random.noise2D(p.x, p.y, 2),
             0
           ];
           
 
         // vector to next main line point
-        let mainVelocity = new THREE.Vector3(...p1)
-          .sub(new THREE.Vector3(...p))
+        let mainVelocity = p1.clone().sub(p)
           .divideScalar(CURVE_SEGMENTS - i)
           // add noise
           .add(
@@ -138,16 +141,35 @@ export default class Viz {
             )
           );
         
-        let nextPointOnMainLine = new THREE.Vector3(...p).add(mainVelocity);
-
-        points.push(
-          nextPointOnMainLine.toArray()
-        );
+        points.push(p.add(mainVelocity));
 
       }
 
+      let xPad = vertical 
+        ? 0
+        : (this.camera.right - this.camera.left) * 0.05;
+      
+      let yPad = vertical
+        ? (this.camera.bottom - this.camera.top) * 0.05
+        : 0;
+
+      let curve = new THREE.CatmullRomCurve3(
+        points.map(
+          p => new THREE.Vector3(
+            lerp(this.camera.left - xPad, this.camera.right + xPad, p.x),
+            lerp(this.camera.top - yPad, this.camera.bottom + yPad, p.y),
+            p.z
+          )
+        )
+      );
+
+
+  
+      var geometry = new THREE.TubeGeometry( curve, 100, TUBE_RADIUS, 32, false );
+
       this.lines.push({
         points,
+        geometry,
         v,
         color: random.pick(palette),
         rendered: 0
@@ -157,29 +179,14 @@ export default class Viz {
   }
   draw(){
     const { TUBE_RADIUS } = this.params;
-    this.buildLines();
+    this.buildLines();    
     this.lines.forEach(
       (l, i) => {
-        const { rendered, color } = l;
+        const { geometry, rendered, color } = l;
         if(!rendered){
-          let xPad = (this.camera.right - this.camera.left) * 0.1;
-          let yPad = (this.camera.bottom - this.camera.top) * 0.1;
-
-          let curve = new THREE.CatmullRomCurve3(
-            l.points.map(
-              p => new THREE.Vector3(
-                lerp(this.camera.left - xPad, this.camera.right + xPad, p[0]),
-                lerp(this.camera.top - yPad, this.camera.bottom + yPad, p[1]),
-                p[2]
-              )
-            )
-          );
-      
-          var geometry = new THREE.TubeGeometry( curve, 100, TUBE_RADIUS, 2, false );
           var material = new THREE.MeshStandardMaterial( { color } );
           var mesh = new THREE.Mesh( geometry, material );
-          material.depthTest = false;
-          mesh.renderOrder = i;
+
           this.scene.add(mesh);
           l.rendered = true;  
         }
