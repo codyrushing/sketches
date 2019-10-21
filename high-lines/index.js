@@ -56,15 +56,15 @@ const sketch = ({ context }) => {
       camera.bottom = -zoom;
 
       // Near/Far
-      camera.near = -50;
-      camera.far = 50;
+      camera.near = 0;
+      camera.far = 100;
 
       // Set position & look at world center
       // put it at zero      
       camera.position.set(
         0, //zoom, 
         0, // zoom, 
-        0, //zoom
+        -1, //zoom
       );
       camera.lookAt(new THREE.Vector3(0,0,0));
 
