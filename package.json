@@ -9,7 +9,8 @@
     "canvas-sketch-util": "^1.10.0",
     "nice-color-palettes": "^3.0.0",
     "stats.js": "^0.17.0",
-    "three": "^0.108.0"
+    "three": "^0.108.0",
+    "three.meshline": "^1.2.0"
   },
   "devDependencies": {},
   "scripts": {
