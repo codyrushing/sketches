@@ -4,7 +4,7 @@ global.THREE = THREE;
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import canvasSketch from 'canvas-sketch';
 import random from 'canvas-sketch-util/random';
-import { lerp } from 'canvas-sketch-util/math';
+import { lerp, mapRange } from 'canvas-sketch-util/math';
 import palettes from 'nice-color-palettes';
 
 // https://threejs.org/examples/?q=line#software_lines_splines
@@ -24,8 +24,8 @@ const palette = random.pick(palettes)
 export default class Viz {
   constructor(params){
     this.params = {
-      LINES_COUNT: 24,
-      LINE_WIDTH: 0.02,
+      LINES_COUNT: 18,
+      LINE_WIDTH: 0.03,
       CURVE_SEGMENTS: 100,
       DEPTH: 50,
       ...params
@@ -66,7 +66,7 @@ export default class Viz {
     const { CURVE_SEGMENTS, LINE_WIDTH } = this.params;
     // create starting point, (0,0) is top left, (1,1) is bottom right
     random.permuteNoise();
-    let pos0 = random.range(0.4, 0.6);
+    let pos0 = random.range(0.3, 0.7);
     let edges = [0,1];
     let offset = random.pick([0,1]);
 
@@ -115,20 +115,37 @@ export default class Viz {
       let pPrev = prevPointGroup.point;
 
       let noise = vertical
-        ? [random.noise2D(pPrev.x, pPrev.y, 2.5), 0, 0 ]
-        : [0, random.noise2D(pPrev.x, pPrev.y, 2.5), 0 ];
+        ? [random.noise2D(pPrev.x, pPrev.y, 2), 0, 0 ]
+        : [0, random.noise2D(pPrev.x, pPrev.y, 2), 0 ];
+
+      let distanceFromNearestEdge = Math.min(i, CURVE_SEGMENTS - i);
+
+      let noiseBuffer = Math.round(CURVE_SEGMENTS * 0.1);
+
+      let noiseMultiplier = mapRange(
+        distanceFromNearestEdge,
+        noiseBuffer, CURVE_SEGMENTS - noiseBuffer,
+        0, 0.05,
+        true
+      );
         
       // get next point
       let p = pPrev.clone()
         .add(
           p1.clone().sub(pPrev)
             .divideScalar(CURVE_SEGMENTS - i)
-            // add noise
-            .add(
-              new THREE.Vector3(...noise).multiplyScalar(
-                Math.min(i, CURVE_SEGMENTS-i) / CURVE_SEGMENTS * 0.05
-              )
-            )
+        );
+
+      // let p = p0.clone().add(
+      //   p1.clone().sub(p0.clone()).multiplyScalar(
+      //     i / CURVE_SEGMENTS 
+      //   )
+      // );
+      
+      // add noise
+      p
+        .add(
+          new THREE.Vector3(...noise).multiplyScalar(noiseMultiplier)
         );
 
       let pointGroup = { point: p };
@@ -225,6 +242,7 @@ export default class Viz {
       let geometry = this.createGeometry(points, { vertical });
 
       this.lines.push({
+        vertical,
         points,
         geometry,
         color: random.pick(palette),
@@ -235,10 +253,11 @@ export default class Viz {
   }
   draw(){
     const { LINE_WIDTH } = this.params;
+
     this.buildLines();    
     this.lines.forEach(
       (l, i) => {
-        const { geometry, rendered, color } = l;
+        const { geometry, rendered, vertical, color } = l;
         if(!rendered){        
           const meshLine = new MeshLine();
           meshLine.setGeometry(geometry);
