@@ -4,6 +4,7 @@ global.THREE = THREE;
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import canvasSketch from 'canvas-sketch';
 import random from 'canvas-sketch-util/random';
+import * as d3Scale from 'd3-scale';
 import { lerp, mapRange } from 'canvas-sketch-util/math';
 import palettes from 'nice-color-palettes';
 
@@ -24,10 +25,11 @@ const palette = random.pick(palettes)
 export default class Viz {
   constructor(params){
     this.params = {
-      LINES_COUNT: 18,
+      LINES_COUNT: 8,
       LINE_WIDTH: 0.03,
-      CURVE_SEGMENTS: 100,
+      CURVE_SEGMENTS: 150,
       DEPTH: 50,
+      SLOTS: 6,
       ...params
     }
     this.setup(params);
@@ -56,6 +58,23 @@ export default class Viz {
 
     // other instance vars
     this.lines = [];
+
+    // https://observablehq.com/@d3/continuous-scales#scale_symlog
+    const n = 0;
+    const constant_e = -1;
+
+    this.noiseScale = d3Scale.scaleSymlog()
+      .domain([-(10 ** n), 10 ** n])
+      .constant(10 ** constant_e)
+  }
+
+  getNoiseMultiplier(i){
+    const { CURVE_SEGMENTS } = this.params;
+    const midpoint = CURVE_SEGMENTS/2;
+    const r = this.noiseScale(
+      d3Scale.scaleLinear().range([-1, 1])(Math.min(i, CURVE_SEGMENTS - i) / midpoint)      
+    );
+    return r;
   }
 
   get baseZ(){
@@ -64,11 +83,13 @@ export default class Viz {
 
   createPoints({ vertical, forward }){
     const { CURVE_SEGMENTS, LINE_WIDTH } = this.params;
+    // const NUM_SLOTS = Math.floor()
     // create starting point, (0,0) is top left, (1,1) is bottom right
     random.permuteNoise();
     let pos0 = random.range(0.3, 0.7);
     let edges = [0,1];
     let offset = random.pick([0,1]);
+    let stackUp = random.boolean();
 
     if(!forward){
       edges.reverse();
@@ -88,7 +109,7 @@ export default class Viz {
       : edges[1];
     let y1 = vertical
       ? edges[1]
-      : pos0;
+      : pos0;    
 
     let vx = x1 - x0;
     let vy = y1 - y0;
@@ -99,53 +120,56 @@ export default class Viz {
 
     let v = new THREE.Vector3(vx,vy,0);
 
+    let noiselessZone = 0.1;
     let p0 = new THREE.Vector3(x0,y0,z);
     let p1 = new THREE.Vector3(x1,y1,z);
+    let p0_n = p0.clone().add(
+      v.clone().multiplyScalar(noiselessZone)
+    );
+    let p1_n = p0.clone().add(
+      v.clone().multiplyScalar(1 - noiselessZone)
+    );
 
-    let pointGroups = [{
-      point: p0,
-      overlappingPoints: [],
-      stackUp: random.boolean()
-    }];
-
-    while (pointGroups.length < CURVE_SEGMENTS){
+    // add first points
+    let pointGroups = [
+      {
+        point: p0,
+        overlappingPoints: [],
+        stackUp
+      },
+      {
+        point: p0_n,
+        overlappingPoints: [],
+        stackUp
+      },
+    ];
+    
+    for(var i=0; i<CURVE_SEGMENTS; i++){
       // get next point
-      let i = pointGroups.length;
-      let prevPointGroup = pointGroups[i-1];
-      let pPrev = prevPointGroup.point;
+      let prevPointGroup = pointGroups[pointGroups.length-1];
+      let prevP = prevPointGroup.point;
+
+      // get next point
+      // let p = prevP.clone()
+      //   .add(
+      //     p1_n.clone().sub(prevP)
+      //       .divideScalar(CURVE_SEGMENTS - i)
+      //   );
+
+      let p = p0_n.clone().add(
+        p1_n.clone().sub(p0_n.clone()).multiplyScalar(
+          i / CURVE_SEGMENTS 
+        )
+      );
 
       let noise = vertical
-        ? [random.noise2D(pPrev.x, pPrev.y, 2), 0, 0 ]
-        : [0, random.noise2D(pPrev.x, pPrev.y, 2), 0 ];
-
-      let distanceFromNearestEdge = Math.min(i, CURVE_SEGMENTS - i);
-
-      let noiseBuffer = Math.round(CURVE_SEGMENTS * 0.1);
-
-      let noiseMultiplier = mapRange(
-        distanceFromNearestEdge,
-        noiseBuffer, CURVE_SEGMENTS - noiseBuffer,
-        0, 0.05,
-        true
-      );
-        
-      // get next point
-      let p = pPrev.clone()
-        .add(
-          p1.clone().sub(pPrev)
-            .divideScalar(CURVE_SEGMENTS - i)
-        );
-
-      // let p = p0.clone().add(
-      //   p1.clone().sub(p0.clone()).multiplyScalar(
-      //     i / CURVE_SEGMENTS 
-      //   )
-      // );
-      
+        ? [random.noise2D(p.x, p.y, 2.5), 0, 0 ]
+        : [0, random.noise2D(p.x, p.y, 2.5), 0 ];
+              
       // add noise
       p
         .add(
-          new THREE.Vector3(...noise).multiplyScalar(noiseMultiplier)
+          new THREE.Vector3(...noise).multiplyScalar(this.getNoiseMultiplier(i) * 0.4)
         );
 
       let pointGroup = { point: p };
@@ -157,6 +181,18 @@ export default class Viz {
 
       pointGroups.push(pointGroup);
     }
+
+    // add last points
+    pointGroups = pointGroups.concat([
+      {
+        point: p1_n,
+        overlappingPoints: []
+      },
+      {
+        point: p1,
+        overlappingPoints: []
+      }
+    ]);
 
     return pointGroups.map(pg => pg.point);
   }
@@ -254,7 +290,10 @@ export default class Viz {
   draw(){
     const { LINE_WIDTH } = this.params;
 
-    this.buildLines();    
+    if(!this.lines.length){
+      this.buildLines();    
+    }
+
     this.lines.forEach(
       (l, i) => {
         const { geometry, rendered, vertical, color } = l;
