@@ -5,6 +5,7 @@ import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import canvasSketch from 'canvas-sketch';
 import random from 'canvas-sketch-util/random';
 import * as d3Scale from 'd3-scale';
+import * as d3Array from 'd3-array';
 import { lerp, mapRange } from 'canvas-sketch-util/math';
 import palettes from 'nice-color-palettes';
 
@@ -14,6 +15,11 @@ import palettes from 'nice-color-palettes';
 // how to incrementally render a mesh
 // https://stackoverflow.com/questions/36426139/incrementally-display-three-js-tubegeometry
 
+/*
+GOOD SEEDS
+678975
+632377
+*/
 random.setSeed(random.getRandomSeed());
 console.log('seed', random.getSeed());
 
@@ -25,7 +31,7 @@ const palette = random.pick(palettes)
 export default class Viz {
   constructor(params){
     this.params = {
-      LINES_COUNT: 8,
+      LINES_COUNT: 14,
       LINE_WIDTH: 0.03,
       CURVE_SEGMENTS: 150,
       DEPTH: 50,
@@ -65,7 +71,7 @@ export default class Viz {
 
     this.noiseScale = d3Scale.scaleSymlog()
       .domain([-(10 ** n), 10 ** n])
-      .constant(10 ** constant_e)
+      .constant(10 ** constant_e);
   }
 
   getNoiseMultiplier(i){
@@ -81,12 +87,10 @@ export default class Viz {
     return (this.camera.near + this.camera.far)/2;
   }
 
-  createPoints({ vertical, forward }){
+  createPoints({ vertical, forward, pos0 }){
     const { CURVE_SEGMENTS, LINE_WIDTH } = this.params;
-    // const NUM_SLOTS = Math.floor()
-    // create starting point, (0,0) is top left, (1,1) is bottom right
+
     random.permuteNoise();
-    let pos0 = random.range(0.3, 0.7);
     let edges = [0,1];
     let offset = random.pick([0,1]);
     let stackUp = random.boolean();
@@ -145,7 +149,7 @@ export default class Viz {
     ];
     
     for(var i=0; i<CURVE_SEGMENTS; i++){
-      // get next point
+      // get next ideal point (without noise)
       let prevPointGroup = pointGroups[pointGroups.length-1];
       let prevP = prevPointGroup.point;
 
@@ -169,7 +173,7 @@ export default class Viz {
       // add noise
       p
         .add(
-          new THREE.Vector3(...noise).multiplyScalar(this.getNoiseMultiplier(i) * 0.4)
+          new THREE.Vector3(...noise).multiplyScalar(this.getNoiseMultiplier(i) * 0.35)
         );
 
       let pointGroup = { point: p };
@@ -183,7 +187,7 @@ export default class Viz {
     }
 
     // add last points
-    pointGroups = pointGroups.concat([
+    return pointGroups.concat([
       {
         point: p1_n,
         overlappingPoints: []
@@ -193,8 +197,6 @@ export default class Viz {
         overlappingPoints: []
       }
     ]);
-
-    return pointGroups.map(pg => pg.point);
   }
 
   adjustPointStacking({pointGroup, prevPointGroup}){
@@ -269,25 +271,52 @@ export default class Viz {
   }
 
   buildLines(){
-    const { LINES_COUNT } = this.params;
+    const { LINES_COUNT, LINE_WIDTH } = this.params;
+
+    const spawnBounds = [0.35, 0.65];
+    const spawnRange = spawnBounds[1] - spawnBounds[0];
+    const slotsPerSide = Math.floor(LINES_COUNT / 2);
+    const slotSize = spawnRange / slotsPerSide;
+    if(slotSize < LINE_WIDTH){
+      console.warn('Slot size too small, lines could overlap.  Decrease LINE_WIDTH or LINES_COUNT, or increase spawn range');
+    }
+    
+    const slots = [];
+    while(slots.length < LINES_COUNT){
+      let i = slots.length;
+      let vertical = i < slotsPerSide;
+      let slotIndex = i % slotsPerSide;
+      slots.push({
+        vertical,
+        pos0: spawnBounds[0] + slotIndex * slotSize
+      });
+    }
 
     while(this.lines.length < LINES_COUNT){
-      let vertical = random.boolean(); 
+      let availableSlots = slots.filter(
+        slot => !this.lines.find(l => l.slot === slot)
+      );
+
+      let slot = random.pick(availableSlots);
+      let { vertical } = slot;
       let forward = random.boolean();
-      let points = this.createPoints({ forward, vertical });
-      let geometry = this.createGeometry(points, { vertical });
+
+      let pointGroups = this.createPoints({ forward, ...slot });
+      let points = pointGroups.map(pg => pg.point);
+      let geometry = this.createGeometry(points, slot);
 
       this.lines.push({
         vertical,
         points,
         geometry,
         color: random.pick(palette),
-        rendered: 0
+        rendered: 0,
+        slot
       });
     }
 
   }
-  draw(){
+  draw({t}){
     const { LINE_WIDTH } = this.params;
 
     if(!this.lines.length){
