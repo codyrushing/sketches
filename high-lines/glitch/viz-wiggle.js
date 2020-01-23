@@ -7,8 +7,6 @@ import random from 'canvas-sketch-util/random';
 import * as d3Scale from 'd3-scale';
 import * as d3Array from 'd3-array';
 import * as d3Ease from 'd3-ease';
-import * as d3Interpolate from 'd3-interpolate';
-import * as d3Color from 'd3-color';
 import { lerp, mapRange } from 'canvas-sketch-util/math';
 import palettes from 'nice-color-palettes';
 
@@ -17,9 +15,6 @@ import palettes from 'nice-color-palettes';
 
 // how to incrementally render a mesh
 // https://stackoverflow.com/questions/36426139/incrementally-display-three-js-tubegeometry
-
-// how to build a circular color scale
-// https://observablehq.com/@d3/d3-interpolatediscrete?collection=@d3/d3-interpolate
 
 /*
 GOOD SEEDS
@@ -292,7 +287,7 @@ export default class Viz {
           ? i
           : CURVE_SEGMENTS-i
       )/(CURVE_SEGMENTS/2);
-      return (x ? Math.sin : Math.cos)(i / (CURVE_SEGMENTS/3) + time) * 0.01 * indexMultiplier;
+      return (x ? Math.sin : Math.cos)(i / (CURVE_SEGMENTS/3) + time) * 0.01 * indexMultiplier * Math.random();
     };
 
     geometry.vertices = points.map(
@@ -374,11 +369,6 @@ export default class Viz {
       lineToDisappear.disappearStartTime = time;
     }
 
-    const colorScale = d3Interpolate.interpolateRgb(
-      'rgb(238, 0, 77)',
-      'rgb(32, 208, 251)'
-    );
-
     this.lines.forEach(
       (line, i) => {
         const { points, vertical, color, startTime, disappearStartTime, slot } = line;
@@ -410,7 +400,7 @@ export default class Viz {
           : LINE_WIDTH;
 
         const material = new MeshLineMaterial({ 
-          color: colorScale( ( (slot.i + time) % LINES_COUNT) / (LINES_COUNT) ),
+          color,
           sizeAttenuation: false,
           lineWidth,
           near: this.camera.near,

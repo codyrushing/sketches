@@ -4,6 +4,11 @@ const canvasSketch = require('canvas-sketch');
 
 // https://threejs.org/examples/?q=line#software_lines_splines
 // https://threejs.org/examples/?q=line#webgl_lines_fat
+/* 
+TODO
+- infinite line generation/destruction
+- red blue color cycling
+*/
 
 // Ensure ThreeJS is in global scope for the 'examples/'
 global.THREE = require('three');
