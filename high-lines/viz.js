@@ -377,7 +377,7 @@ export default class Viz {
 
   draw({time}){
     const { LINE_WIDTH, LINES_COUNT } = this.params;
-    const drawDurationSeconds = 4;
+    const drawDurationSeconds = 3;
     const disappearingBuffer = 3;
 
     let currentLine = this.lines[this.lines.length - 1];
