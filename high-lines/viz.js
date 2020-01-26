@@ -10,6 +10,7 @@ import * as d3Ease from 'd3-ease';
 import * as d3Interpolate from 'd3-interpolate';
 import * as d3Color from 'd3-color';
 import { lerp, mapRange } from 'canvas-sketch-util/math';
+import { linearOscillator } from '../utils';
 import palettes from 'nice-color-palettes';
 
 // https://threejs.org/examples/?q=line#software_lines_splines
@@ -34,14 +35,15 @@ const palette = random.pick(palettes)
   .concat(random.pick(random.shuffle(palettes)))
   .concat(random.pick(random.shuffle(palettes)));
 
+let firstLineSlotIndex = null;
+
 export default class Viz {
   constructor(params){
     this.params = {
       LINES_COUNT: 14,
-      LINE_WIDTH: 0.03,
+      LINE_WIDTH: 0.02,
       CURVE_SEGMENTS: 150,
       DEPTH: 50,
-      SLOTS: 6,
       ...params
     }
     this.setup(params);
@@ -78,15 +80,27 @@ export default class Viz {
     this.noiseScale = d3Scale.scaleSymlog()
       .domain([-(10 ** n), 10 ** n])
       .constant(10 ** constant_e);
+
+    const deepRed = '#FF0951';
+    const intermediatePurple = '#8439FF';
+    const blue = '#29ACFA';
+    const teal = '#00FAF4';
+
+    this.colorScale = d3Scale.scaleLinear()
+      .domain([0, 1])
+      .range(['#FF388A', '#0AA1FA'])
+      .interpolate(d3Interpolate.interpolateRgb)
+      .clamp(true);
   }
 
   getNoiseMultiplier(i){
     const { CURVE_SEGMENTS } = this.params;
+    const noiseConstant = 0.25;
     const midpoint = CURVE_SEGMENTS/2;
-    const r = this.noiseScale(
+    const posValue = this.noiseScale(
       d3Scale.scaleLinear().range([-1, 1])(Math.min(i, CURVE_SEGMENTS - i) / midpoint)      
     );
-    return r;
+    return posValue * noiseConstant;
   }
 
   get baseZ(){
@@ -156,8 +170,6 @@ export default class Viz {
       v.clone().multiplyScalar(1 - noiselessZone)
     );
 
-
-
     // add first points
     let pointGroups = interpolateVectors({vi: p0, vf: p0_n, count: 1, inclusive: true})
       .map(
@@ -188,14 +200,16 @@ export default class Viz {
         )
       );
 
+      const noiseFrequency = 2.5;
+
       let noise = vertical
-        ? [random.noise2D(p.x, p.y, 2.5), 0, 0 ]
-        : [0, random.noise2D(p.x, p.y, 2.5), 0 ];
+        ? [random.noise2D(p.x, p.y, noiseFrequency), 0, 0 ]
+        : [0, random.noise2D(p.x, p.y, noiseFrequency), 0 ];
               
       // add noise
       p
         .add(
-          new THREE.Vector3(...noise).multiplyScalar(this.getNoiseMultiplier(i) * 0.35)
+          new THREE.Vector3(...noise).multiplyScalar(this.getNoiseMultiplier(i))
         );
 
       let pointGroup = { point: p };
@@ -210,7 +224,7 @@ export default class Viz {
 
     // add last points
     return pointGroups.concat(
-      interpolateVectors({vi: p1_n, vf: p1, count: 1, inclusive: true})
+      interpolateVectors({vi: p1_n, vf: p1, count: 10, inclusive: true})
       .map(
         point => {
           return {
@@ -353,13 +367,22 @@ export default class Viz {
       slot
     });      
   }
+
+  getColor({slotIndex, time}){
+    const { LINES_COUNT } = this.params;
+    const oscillator = linearOscillator({ domain: [0, LINES_COUNT/2],  });
+    const v = oscillator(slotIndex + time * 0.5);
+    return this.colorScale(v);
+  }
+
   draw({time}){
     const { LINE_WIDTH, LINES_COUNT } = this.params;
     const drawDurationSeconds = 4;
+    const disappearingBuffer = 3;
 
     let currentLine = this.lines[this.lines.length - 1];
     // if all available lines have been drawn, the first line will disappear
-    let lineToDisappear = this.lines.length >= LINES_COUNT - 4
+    let lineToDisappear = this.lines.length >= LINES_COUNT - disappearingBuffer
       ? this.lines[0]
       : null;
     
@@ -374,11 +397,6 @@ export default class Viz {
       lineToDisappear.disappearStartTime = time;
     }
 
-    const colorScale = d3Interpolate.interpolateRgb(
-      'rgb(238, 0, 77)',
-      'rgb(32, 208, 251)'
-    );
-
     this.lines.forEach(
       (line, i) => {
         const { points, vertical, color, startTime, disappearStartTime, slot } = line;
@@ -392,7 +410,8 @@ export default class Viz {
             Math.round(
               points.length
               *
-              d3Ease.easePolyInOut((time - startTime)/drawDurationSeconds, 2)
+              // d3Ease.easePolyInOut((time - startTime)/drawDurationSeconds, 2)
+              d3Ease.easeQuadInOut((time - startTime)/drawDurationSeconds)
             )
           )
           : points;
@@ -410,7 +429,7 @@ export default class Viz {
           : LINE_WIDTH;
 
         const material = new MeshLineMaterial({ 
-          color: colorScale( ( (slot.i + time) % LINES_COUNT) / (LINES_COUNT) ),
+          color: this.getColor({slotIndex: slot.i, time}),
           sizeAttenuation: false,
           lineWidth,
           near: this.camera.near,
